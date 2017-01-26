@@ -35,7 +35,7 @@ public class Channel {
 			// check whether or not the bit was flipped based on calculated prob
 			byte potentiallyFlippedBit;
 			if (randNumber <= errorProb)
-				potentiallyFlippedBit = modTwoAddOne(encodedImage[i]);
+				potentiallyFlippedBit = (byte) ((encodedImage[i] + 1) % 2);
 			else
 				potentiallyFlippedBit = encodedImage[i];
 			
@@ -60,9 +60,4 @@ public class Channel {
 			history.add((byte) 0);
 	}
 
-	private byte modTwoAddOne(byte bitToFlip) {
-		if (bitToFlip == 0)
-			return 1;
-		return 0;
-	}
 }

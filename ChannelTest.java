@@ -2,9 +2,9 @@
 public class ChannelTest {
 
 	public static void main(String[] args) {
-		Channel channel = new Channel(0.05, 10, 10);
+		Channel channel = new Channel(0.2, 5, 2);
 
-		byte[] data = new byte[1000];
+		byte[] data = new byte[100];
 		
 		byte[] output = channel.sendThroughChannel(data);
 		
