@@ -1,9 +1,10 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Quantizer {
+public class CodeMapTrainer {
 
 	public static final double EPSILON = 0.001; // a small number
 	
@@ -16,9 +17,9 @@ public class Quantizer {
 	 * @param sourceVectors The source data to be quantized.
 	 * @param desiredNumCodeVectors The minimum desired number of code vectors. Note that the
 	 * number of code vectors must be a power of two, so this number is only a lower bound.
-	 * @return The codebook, mapping the input source data to its corresponding codeword.
+	 * @return The list of code vectors.
 	 */
-	public Map<Double, Double> quantize(List<Double> sourceVectors, int desiredNumCodeVectors) {
+	public List<Double> generateCodebook(List<Double> sourceVectors, int desiredNumCodeVectors) {
 		this.sourceVectors = sourceVectors;
 		this.codeVectors = new ArrayList<>();
 		double prevAvgDistortion; // D^(i-1) on data-compression.com
@@ -44,18 +45,62 @@ public class Quantizer {
 				updateCodeVectors();
 				currAvgDistortion = calculateAverageDistortion();
 			} while((prevAvgDistortion - currAvgDistortion) /
-					prevAvgDistortion > Quantizer.EPSILON);
+					prevAvgDistortion > CodeMapTrainer.EPSILON);
+			dStar = currAvgDistortion;
+		}
+		updateCodebook();
+		
+		Collections.sort(codeVectors);
+		return codeVectors;
+	} // end generateCodebook()
+	
+	
+	// LEFT AS A LEGACY METHOD SO THAT THE TESTING CLASS STILL WORKS
+	/**
+	 * Performs scalar quantization on a set of (1-dimensional) source vectors
+	 * @param sourceVectors The source data to be quantized.
+	 * @param desiredNumCodeVectors The minimum desired number of code vectors. Note that the
+	 * number of code vectors must be a power of two, so this number is only a lower bound.
+	 * @return The codebook, mapping the input source data to its corresponding codeword.
+	 */
+	public Map<Double, Double> generateCodeMap(List<Double> sourceVectors, int desiredNumCodeVectors) {
+		this.sourceVectors = sourceVectors;
+		this.codeVectors = new ArrayList<>();
+		double prevAvgDistortion; // D^(i-1) on data-compression.com
+		double currAvgDistortion;// D^(i) on data-compression.com
+		
+		// set up the initial code vector, as seen in Step 2 on data-compression.com
+		double initialCodeVector = (1.0 / sourceVectors.size()) * 
+				(sourceVectors.stream().reduce(0.0, (x,y) -> x+y));
+		codeVectors.add(initialCodeVector);
+		
+		// set up the initial distortion, as seen in Step 2 on data-compression.com
+		dStar = 0;
+		for (Double sourceVector : sourceVectors)
+			dStar += Math.pow(sourceVector - initialCodeVector, 2);
+		dStar *= (1.0 / sourceVectors.size());
+		
+		while (codeVectors.size() < desiredNumCodeVectors) {
+			splitCodeVectors();
+			currAvgDistortion = dStar; // this could go out of the loop, but is here for clarity
+			do {
+				prevAvgDistortion = currAvgDistortion;
+				updateCodebook();
+				updateCodeVectors();
+				currAvgDistortion = calculateAverageDistortion();
+			} while((prevAvgDistortion - currAvgDistortion) /
+					prevAvgDistortion > CodeMapTrainer.EPSILON);
 			dStar = currAvgDistortion;
 		}
 		updateCodebook();
 		return codebook;
-	} // end quantize()
+	} // end generateCodeMap()
 
 	private void splitCodeVectors() {
 		List<Double> tempCodeVectors = new ArrayList<>();
 		for (Double codeVector : codeVectors) {
-			tempCodeVectors.add((1 + Quantizer.EPSILON) * codeVector);
-			tempCodeVectors.add((1 - Quantizer.EPSILON) * codeVector);
+			tempCodeVectors.add((1 + CodeMapTrainer.EPSILON) * codeVector);
+			tempCodeVectors.add((1 - CodeMapTrainer.EPSILON) * codeVector);
 		}
 		codeVectors = tempCodeVectors;
 	} // end splitCodeVectors()

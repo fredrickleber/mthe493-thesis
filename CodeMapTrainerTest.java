@@ -7,7 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 
-public class TestQuantizer {
+public class CodeMapTrainerTest {
 
 	public static List<Double> generateRandomGaussianSourceVectors(int numSourceVectors) {
 		List<Double> sourceVectors = new ArrayList<>();
@@ -18,14 +18,14 @@ public class TestQuantizer {
 	}
 	
 	public static void main(String[] args) throws FileNotFoundException {
-		Quantizer scalarQuantizer = new Quantizer();
+		CodeMapTrainer scalarQuantizer = new CodeMapTrainer();
 		List<Double> sourceVectors = generateRandomGaussianSourceVectors(10000);
 		List<Map<Double, Double>> codebooks = new ArrayList<>();
-		codebooks.add(scalarQuantizer.quantize(sourceVectors, 1));
-		codebooks.add(scalarQuantizer.quantize(sourceVectors, 2));
-		codebooks.add(scalarQuantizer.quantize(sourceVectors, 4));
-		codebooks.add(scalarQuantizer.quantize(sourceVectors, 8));
-		codebooks.add(scalarQuantizer.quantize(sourceVectors, 16));
+		codebooks.add(scalarQuantizer.generateCodeMap(sourceVectors, 1));
+		codebooks.add(scalarQuantizer.generateCodeMap(sourceVectors, 2));
+		codebooks.add(scalarQuantizer.generateCodeMap(sourceVectors, 4));
+		codebooks.add(scalarQuantizer.generateCodeMap(sourceVectors, 8));
+		codebooks.add(scalarQuantizer.generateCodeMap(sourceVectors, 16));
 
 	    PrintWriter pw = new PrintWriter(new File("quantizer_data.csv"));
 	    StringBuilder sb = new StringBuilder();
