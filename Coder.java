@@ -11,6 +11,10 @@ public class Coder implements java.io.Serializable {
 	// this is a 1d array because zigzag scanning is used, see http://www.bretl.com/mpeghtml/zigzag.HTM
 	private static final int[] fixedBitAllocation; 
 
+	// TODO: Modify the encode/decode methods to take in a filename of an image instead of DCT coeffs.
+	// We will calculate the DCT coeffs in this class, using
+	// http://wendykierp.github.io/JTransforms/apidocs/org/jtransforms/dct/DoubleDCT_2D.html
+	
 	private int coderRate; // encoder/decoder rate. bit allocation is multiplied by this positive integer
 	private Map<Integer, COSQ> cosqs;
 

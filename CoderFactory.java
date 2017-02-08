@@ -9,8 +9,8 @@ public class CoderFactory {
 	private static final int RNG_SEED = 123456789; // used to generate training vectors
 	private static final int NUM_TRAINING_VECTORS = 10000;
 	
-	private static final double MU = 0; // for the Laplacian distribution
-	private static final double BETA = 1; // for the Laplacian distribution
+	private static final double MU = 0; // for the Laplacian distribution to have zero mean
+	private static final double BETA = Math.pow(2, -0.5); // for the Laplacian distribution to have unit variance
 	
 	//TODO: Assign values to these
 	private static final int DC_PIXEL_QUANTIZER_RATE;
