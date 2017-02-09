@@ -1,3 +1,8 @@
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,11 +30,36 @@ public class CoderFactory {
 	 * @return A Coder object, either created anew or from the cache.
 	 */
 	public static Coder createCoder(Channel trainingChannel, int coderRate) {
-		// TODO: check if coder is cached and return if so
-		// aka deal with serialization stuff
-
-		return new Coder(generateCOSQs(trainingChannel, coderRate), coderRate);
+		String potentialFilename = "coder-" + trainingChannel.getBitErrorRate() + trainingChannel.getBurstLevel() + ".ser";
+		try (
+			FileInputStream fileIn = new FileInputStream(potentialFilename);
+			ObjectInputStream in = new ObjectInputStream(fileIn)
+		) {
+			Coder deserializedCoder = (Coder) in.readObject();
+			deserializedCoder.setCoderRate(coderRate);
+			return deserializedCoder;
+		} catch (IOException i) {
+			// if there was no such coder serialized, construct a new one
+			Coder newCoder = new Coder(generateCOSQs(trainingChannel, coderRate), coderRate);
+			serializeNewCoder(newCoder, potentialFilename);
+			return newCoder;
+		} catch (ClassNotFoundException c) {
+			System.out.println("Coder class not found");
+			c.printStackTrace();
+			return null;
+		}		
 	} // end createCoder()
+	
+	private static void serializeNewCoder(Coder coder, String filename) {
+		try (
+			FileOutputStream fileOut = new FileOutputStream(filename);
+			ObjectOutputStream out = new ObjectOutputStream(fileOut)
+		) {
+			out.writeObject(coder);
+		} catch (IOException i) {
+			i.printStackTrace();
+		}
+	} // end serializeNewCoder()
 	
 	/**
 	 * Creates a Map of COSQs, used to instantiate a Coder object.
