@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class IndexMapTrainer{
@@ -13,11 +14,20 @@ public class IndexMapTrainer{
 	private final double BIT_ERROR_RATE, BURST_LEVEL;		// epsilon, delta in thesis
 	private final int MARKOV_ORDER;							// M in thesis
 	private final double PROB00, PROB01, PROB10, PROB11;	// Transition probabilities given by probAB := P(A|B)
+	private final double[][] CONDITIONAL_PROB; 				// [i][j] : Conditional probability of changing from index i to index j
 	
-	private final int NUM_BITS; // number of bits needed to represent codewords
-	private List<List<Byte>> indexMap;
+	// Codebook & relevant parameters
+	private final List<Double> codebook;
+	private final int NUM_BITS; 		// number of bits needed to represent codewords
+	private final int SIZE; 			// number of codewords
 	
 	
+	/**
+	 * Constructors an IndexMapTrainer that utilizes the simulated annealing algorithm presented in the thesis.
+	 * @param codebook	List containing all codewords.
+	 * @param trainingChannel	Channel used to train data.
+	 * @throws MarkovMemoryException	Throws an exception is the memory is not 1.
+	 */
 	public IndexMapTrainer (List<Double> codebook, Channel trainingChannel) throws MarkovMemoryException {
 		int m = trainingChannel.getMarkovOrder();
 		if (m != 1)
@@ -26,31 +36,170 @@ public class IndexMapTrainer{
 			this.MARKOV_ORDER = m;
 		this.BIT_ERROR_RATE = trainingChannel.getBitErrorRate();
 		this.BURST_LEVEL = trainingChannel.getBurstLevel();
+		this.codebook = codebook;
+		this.SIZE = codebook.size();
+		this.NUM_BITS = (int) (Math.log(codebook.size())/Math.log(2));
 		this.PROB00 = (1 - BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
 		this.PROB01 = (1 - BIT_ERROR_RATE) / (1 + BURST_LEVEL);
 		this.PROB10 = BIT_ERROR_RATE / (1 +  BURST_LEVEL);
 		this.PROB11 = (BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
-		this.NUM_BITS = (int) (Math.log(codebook.size())/Math.log(2));
-		this.indexMap = initializeIndexMap(codebook.size());
+		this.CONDITIONAL_PROB = initializeConditionalProb();
 	}
-		
-	private List<List<Byte>> initializeIndexMap(int size){
-		List<List<Byte>> indexMap = new ArrayList<List<Byte>>(size);
-		return indexMap;
-	}	
-	
-	public List<List<Byte>> trainIndexMap(List<Double> sourceWords){
-		return indexMap;
-	}	
 	
 	/**
-	 * Computes the conditional probability
-	 * @param j
-	 * @param i
-	 * @return P(j|b(i))
+	 * Train the index map. Uses the Simulated Annealing (SA) algorithm presented in Julian's thesis.
+	 * Note that "state" is the index map in a non-binary form, and the name comes from SA convention.
+	 * Additionally, note that the term "energy" is equivalent to expected distortion, but is named as such due to SA convention.
+	 * @param trainingData	Data used to train the map.
+	 * @return	Index map, where each index is represented in binary via a byte list.
 	 */
-	public double conditionalProb(int j, int i) {
-		return 1;
+	public List<List<Byte>> train(List<Double> trainingData){
+		// Initialize State
+		ArrayList<Integer> state = new ArrayList<Integer>(SIZE);
+		ArrayList<Integer> nextState;
+		for (int i = 0; i < SIZE; i++)
+			state.add(i);
+		
+		// Initialize System
+		double temp = TEMP_INIT;
+		int numPertubations = 0;
+		Collections.shuffle(state); // Random initial state
+		double energy = expectedDistortion(trainingData, state);
+		double newEnergy;
+		double oldEnergy = energy;
+		double changeInEnergy; 		// delta in thesis
+		
+		// SA algorithm
+		while(true) {
+			while(numPertubations++ < MAX_PERTURBATIONS) {
+				// Randomly select new state
+				nextState = new ArrayList<Integer>(state);
+				Collections.shuffle(nextState);
+				newEnergy = expectedDistortion(trainingData, nextState);
+				changeInEnergy = newEnergy - energy;
+				
+				// Decide whether to accept new state
+				if (changeInEnergy < 0) {
+					state = new ArrayList<Integer>(nextState);
+					energy = newEnergy;
+				}
+				else if (acceptNewState(changeInEnergy, temp)) {
+					state = new ArrayList<Integer>(nextState);
+					energy = newEnergy;
+				}
+				
+				// Check to see if energy has dropped
+				if (energy < oldEnergy) {
+					numPertubations = 0;
+					oldEnergy = energy;
+				}
+			}
+			temp *= COOLING_MULTIPLIER; // cool system
+			if (temp < TEMP_FINAL)
+				break;
+		}
+		return convertToBinary(state);
 	}
 	
+	/**
+	 * Computes whether the next state will be accepted or not.
+	 * @param changeInEnergy	Change in energy between new state and old state.
+	 * @param temp	Temperature of the system.
+	 * @return	Boolean informing the algorithm whether or not to accept the new state.
+	 */
+	private boolean acceptNewState(double changeInEnergy, double temp) {
+		double random = Math.random();
+		return (random > Math.exp(-changeInEnergy / temp));
+	}
+
+	/**
+	 * Computes the expected distortion (energy) using the user-provided set of training data.
+	 * @param trainingData	List of source words generated by some distribution.
+	 * @param state	Current state of the system.
+	 * @return	Expected distorition (energy).
+	 */
+	private double expectedDistortion(List<Double> trainingData, ArrayList<Integer> state) {
+		double expectedDistortion = 0;
+		int mappedIndex;
+		int numSourceWords = trainingData.size();
+		for (double sourceWord : trainingData) {
+			for (int j = 0; j < SIZE; j ++) {
+				mappedIndex = state.get(encodedIndex(sourceWord));
+				expectedDistortion += CONDITIONAL_PROB[mappedIndex][j] * Math.pow(sourceWord - codebook.get(j), 2) / numSourceWords;
+			}
+		}
+		return expectedDistortion;
+	}
+	
+	/**
+	 * Determine the index of the encoded source word.
+	 * @param sourceWord
+	 * @return	Codeword index.
+	 */
+	public int encodedIndex(double sourceWord) {
+		int bestIndex = 0;
+		for (int i = 0; i < SIZE; i++) {
+			if (Math.abs(codebook.get(i) - sourceWord) < Math.abs(codebook.get(bestIndex) - sourceWord))
+				bestIndex = i;
+		}
+		return bestIndex;
+	}
+	
+	/**
+	 * Compute all transition probabilities using the attributes of the channel.
+	 * @return	Matrix containing these transition probabilities.
+	 */
+	private double[][] initializeConditionalProb() {
+		double[][] conditionalProb = new double[SIZE][SIZE];
+		int errorWord;
+		boolean pastError;
+		double probError;
+		for (int i = 0; i < SIZE; i++) { 			// i = word sent
+			for (int j = 0; j < SIZE; j++) {		// j = word received
+				probError = 0;
+				errorWord = i ^ j;
+				if ((errorWord & 1) == 0) {
+					probError += PROB00 + PROB01;
+					pastError = false;
+				}
+				else {
+					probError += PROB10 + PROB11;
+					pastError = true;
+				}
+				for (int k = 1; k < NUM_BITS; k++) {
+					if (((errorWord >> k) & 1) == 0) {
+						probError += pastError ? PROB01 : PROB00;
+						pastError = false;
+					}
+					else {
+						probError += pastError ? PROB11 : PROB10;
+						pastError = true;
+					}
+				}
+				conditionalProb[i][j] = probError;
+			}
+		}
+		return conditionalProb;
+	}
+	
+	/**
+	 * Converts the index map (state) to a binary (byte list) representation.
+	 * @param indexMap
+	 * @return	Index map with entries represented in a binary (byte list) form.
+	 */
+	private List<List<Byte>> convertToBinary(List<Integer> indexMap) {
+		List<Byte> binaryForm;
+		List<List<Byte>> binaryIndexMap = new ArrayList<List<Byte>>(SIZE);
+		for(int index : indexMap) {
+			binaryForm = new ArrayList<Byte>(NUM_BITS);
+			for (int k = 0; k < NUM_BITS; k++) {
+				if (((index >> k) & 1) == 0)
+					binaryForm.add((byte) 0);
+				else
+					binaryForm.add((byte) 1);
+			}
+			binaryIndexMap.add(binaryForm);
+		}
+		return binaryIndexMap;	
+	}
 }
