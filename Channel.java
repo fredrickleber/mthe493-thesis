@@ -13,7 +13,7 @@ public class Channel {
 	/**
 	 * 
 	 * @param bitErrorRate amount of channel noise (channel bit error rate), must be between 0 and 1 (epsilon in thesis)
-	 * @param burstLevel amount of "bursty" behavior, higher is more (delta in theis)
+	 * @param burstLevel amount of "bursty" behavior, higher is more (delta in thesis)
 	 * @param markovOrder order of markov process (remembers last M results)
 	 */
 	public Channel(double bitErrorRate, double burstLevel, int markovOrder) {

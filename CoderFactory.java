@@ -18,9 +18,9 @@ public class CoderFactory {
 	private static final double BETA = Math.pow(2, -0.5); // for the Laplacian distribution to have unit variance
 	
 	//TODO: Assign values to these
-	private static final int DC_PIXEL_QUANTIZER_RATE;
+	private static final int UNIQUE_DC_PIXEL_QUANTIZER_RATE = 8;
 	// an array of all the unique rates used in the fixed bit allocation array in the Coder class
-	private static final int[] AC_PIXEL_QUANTIZER_RATES; // note even though it's final, array values can be changed
+	private static final int[] UNIQUE_AC_PIXEL_QUANTIZER_RATES = {1, 2, 4, 5, 6, 7}; // note even though it's final, array values can be changed
 
 
 	/**
@@ -28,8 +28,9 @@ public class CoderFactory {
 	 * @param trainingChannel The channel with which the coder will be trained.
 	 * @param coderRate The overall rate of the coder.
 	 * @return A Coder object, either created anew or from the cache.
+	 * @throws MarkovMemoryException 
 	 */
-	public static Coder createCoder(Channel trainingChannel, int coderRate) {
+	public static Coder createCoder(Channel trainingChannel, int coderRate) throws MarkovMemoryException {
 		String potentialFilename = "coder-" + trainingChannel.getBitErrorRate() + trainingChannel.getBurstLevel() + ".ser";
 		try (
 			FileInputStream fileIn = new FileInputStream(potentialFilename);
@@ -66,24 +67,25 @@ public class CoderFactory {
 	 * @param trainingChannel The channel with which the COSQs will be trained.
 	 * @param coderRate The overall rate of the coder.
 	 * @return A Map from COSQ rates to COSQ objects. 
+	 * @throws MarkovMemoryException 
 	 */
-	private static Map<Integer, COSQ> generateCOSQs(Channel trainingChannel, int coderRate) {
+	private static Map<Integer, COSQ> generateCOSQs(Channel trainingChannel, int coderRate) throws MarkovMemoryException {
 		Map<Integer, COSQ> cosqs = new HashMap<>();
 		List<Double> dcTrainingData = generateDCTrainingData(NUM_TRAINING_VECTORS);
 		List<Double> acTrainingData = generateACTrainingData(NUM_TRAINING_VECTORS);
 		CodeMapTrainer codeMapTrainer = new CodeMapTrainer();
 		
 		// generate the DC pixel COSQ
-		List<Double> dcCodebook = codeMapTrainer.generateCodebook(dcTrainingData, (int) Math.pow(2, DC_PIXEL_QUANTIZER_RATE * coderRate));
+		List<Double> dcCodebook = codeMapTrainer.generateCodebook(dcTrainingData, (int) Math.pow(2, UNIQUE_DC_PIXEL_QUANTIZER_RATE * coderRate));
 		IndexMapTrainer dcIndexMapTrainer = new IndexMapTrainer(dcCodebook, trainingChannel);
 		// give the DC pixel COSQ a key of -1 to ensure it is unique
-		cosqs.put(-1, new COSQ(dcCodebook, dcIndexMapTrainer.simulateAnnealing()));
+		cosqs.put(-1, new COSQ(dcCodebook, dcIndexMapTrainer.train(dcTrainingData)));
 
 		// generate the AC pixel COSQs
-		for (int rate : AC_PIXEL_QUANTIZER_RATES) {
+		for (int rate : UNIQUE_AC_PIXEL_QUANTIZER_RATES) {
 			List<Double> acCodebook = codeMapTrainer.generateCodebook(acTrainingData, (int) Math.pow(2, rate * coderRate));
 			IndexMapTrainer acIndexMapTrainer = new IndexMapTrainer(acCodebook, trainingChannel);
-			cosqs.put(rate * coderRate, new COSQ(acCodebook, acIndexMapTrainer.simulateAnnealing()));
+			cosqs.put(rate * coderRate, new COSQ(acCodebook, acIndexMapTrainer.train(acTrainingData)));
 		}
 		
 		return cosqs;

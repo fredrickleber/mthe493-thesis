@@ -13,7 +13,14 @@ public class Coder implements java.io.Serializable {
 	
 	// TODO: Assign something to this, from the thesis
 	// the number of bits that each pixel will take up when encoded, in row-major order
-	private static final int[] fixedBitAllocation; 
+	private static final int[] fixedBitAllocation = {8, 7, 6, 4, 0, 0, 0, 0, 
+													 7, 6, 5, 1, 0, 0, 0, 0, 
+													 6, 5, 2, 0, 0, 0, 0, 0,
+													 4, 1, 0, 0, 0, 0, 0, 0,
+													 0, 0, 0, 0, 0, 0, 0, 0,
+													 0, 0, 0, 0, 0, 0, 0, 0,
+													 0, 0, 0, 0, 0, 0, 0, 0,
+													 0, 0, 0, 0, 0, 0, 0, 0};
 	
 	private int coderRate; // encoder/decoder rate. bit allocation is multiplied by this positive integer
 	private Map<Integer, COSQ> cosqs;
