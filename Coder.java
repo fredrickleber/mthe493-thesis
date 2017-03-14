@@ -1,6 +1,5 @@
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -11,16 +10,15 @@ public class Coder implements java.io.Serializable {
 
 	private static final long serialVersionUID = 2L; // for serialization
 	
-	// TODO: Assign something to this, from the thesis
-	// the number of bits that each pixel will take up when encoded, in row-major order
-	private static final int[] fixedBitAllocation = {8, 7, 6, 4, 0, 0, 0, 0, 
-													 7, 6, 5, 1, 0, 0, 0, 0, 
-													 6, 5, 2, 0, 0, 0, 0, 0,
-													 4, 1, 0, 0, 0, 0, 0, 0,
-													 0, 0, 0, 0, 0, 0, 0, 0,
-													 0, 0, 0, 0, 0, 0, 0, 0,
-													 0, 0, 0, 0, 0, 0, 0, 0,
-													 0, 0, 0, 0, 0, 0, 0, 0};
+	// the number of bits that each pixel will take up when encoded
+	private static final int[][] fixedBitAllocation = {{8, 7, 6, 4, 0, 0, 0, 0}, 
+													 {7, 6, 5, 1, 0, 0, 0, 0}, 
+													 {6, 5, 2, 0, 0, 0, 0, 0},
+													 {4, 1, 0, 0, 0, 0, 0, 0},
+													 {0, 0, 0, 0, 0, 0, 0, 0},
+													 {0, 0, 0, 0, 0, 0, 0, 0},
+													 {0, 0, 0, 0, 0, 0, 0, 0},
+													 {0, 0, 0, 0, 0, 0, 0, 0}};
 	
 	private int coderRate; // encoder/decoder rate. bit allocation is multiplied by this positive integer
 	private Map<Integer, COSQ> cosqs;
@@ -39,32 +37,25 @@ public class Coder implements java.io.Serializable {
 	public List<Byte> encodeImage(String filename) {
 		double[][] grayScalePixelValues = ImageManager.getGrayScaleValuesFromFilename(filename);
 		DoubleDCT_2D dct = new DoubleDCT_2D(grayScalePixelValues.length, grayScalePixelValues[0].length);
-		dct.forward(grayScalePixelValues, false); // performs the dct in-place on the given array
-		
-		List<Double> dctData = new ArrayList<>();
-		for (double[] rowArray : grayScalePixelValues){
-			for (double dctCoeff : rowArray){
-				dctData.add(dctCoeff);
-			}
-		}
-		return encodeCoefficients(dctData);
+		dct.forward(grayScalePixelValues, true); // performs the dct in-place on the given array
+		return encodeCoefficients(grayScalePixelValues);
 	} // end encodeImage()
 	
 	/**
 	 * Decodes an encoded image into a BufferedImage.
 	 * @param encodedData The encoded image data.
 	 * @param imageHeight The height of the image to be decoded, in pixels.
+	 * @param imageWidth The width of the image to be decoded, in pixels.
 	 * @return A decoded BufferedImage.
 	 */
-	public BufferedImage decodeImage(List<Byte> encodedData, int imageHeight) {
-		List<Double> decodedData = decodeCoefficients(encodedData);
-		int imageWidth = decodedData.size() / imageHeight;
+	public BufferedImage decodeImage(List<Byte> encodedData, int imageHeight, int imageWidth) {
+		List<Double> decodedData = decodeCoefficients(encodedData, imageHeight, imageWidth);
 		double[] dctCoeffs = new double[imageHeight * imageWidth]; // row-major order array
 		for (int i = 0; i < dctCoeffs.length; i++)
 			dctCoeffs[i] = decodedData.get(i);
 		
 		DoubleDCT_2D dct = new DoubleDCT_2D(imageHeight, imageWidth);
-		dct.inverse(dctCoeffs, false); // performs the inverse dct in-place on the given array
+		dct.inverse(dctCoeffs, true); // performs the inverse dct in-place on the given array
 		return ImageManager.getBufferedImageFromGrayScaleValues(dctCoeffs, imageHeight);
 	} // end decodeImage()
 	
@@ -73,11 +64,15 @@ public class Coder implements java.io.Serializable {
 	 * @param dctData The data given after applying the discrete cosine transform.
 	 * @return The encoded data, as a List of Bytes.
 	 */
-	private List<Byte> encodeCoefficients(List<Double> dctData) {
+	private List<Byte> encodeCoefficients(double[][] dctData) {
 		List<Byte> encodedData = new ArrayList<>();
-		encodedData.addAll(cosqs.get(-1).encodeSourceWord(dctData.get(0))); // dc pixel
-		for (int i = 1; i < dctData.size(); i++) { // ac pixels
-			encodedData.addAll(cosqs.get(fixedBitAllocation[i] * coderRate).encodeSourceWord(dctData.get(i)));
+		for (int row = 0; row < dctData.length; row++) {
+			for (int col = 0; col < dctData[0].length; col++) {
+				if ((row % 8 == 0) && (col % 8 == 0))
+					encodedData.addAll(cosqs.get(-1).encodeSourceWord(dctData[row][col])); // dc pixel
+				else if (fixedBitAllocation[row % 8][col % 8] != 0) // make sure we are supposed to encode the value
+					encodedData.addAll(cosqs.get(fixedBitAllocation[row % 8][col % 8] * coderRate).encodeSourceWord(dctData[row][col]));	
+			}
 		}
 		return encodedData;
 	} // end encode()
@@ -85,18 +80,28 @@ public class Coder implements java.io.Serializable {
 	/**
 	 * Decodes a given piece of encoded data.
 	 * @param encodedData The encoded data, as a List of Bytes.
+	 * @param imageHeight The height of the image to be decoded, in pixels.
+	 * @param imageWidth The width of the image to be decoded, in pixels.
 	 * @return The List of Doubles to be fed into the inverse DCT.
 	 */
-	private List<Double> decodeCoefficients(List<Byte> encodedData) {
+	private List<Double> decodeCoefficients(List<Byte> encodedData, int imageHeight, int imageWidth) {
 		List<Double> decodedData = new ArrayList<>();
-		decodedData.add(cosqs.get(-1).decodeCodeWord(encodedData.subList(0, fixedBitAllocation[0] * coderRate))); // dc pixel
 		
-		int subIndex = fixedBitAllocation[0] * coderRate; // skip the bits used for the dc pixel
-		for (int i = 1; i < fixedBitAllocation.length; i++) { // ac pixels
-			// codeword i is encoded with (fixedBitAllocation[i] * coderRate) bits
-			decodedData.add(cosqs.get(fixedBitAllocation[i] * coderRate).
-					decodeCodeWord(encodedData.subList(subIndex, subIndex + (fixedBitAllocation[i] * coderRate))));
-			subIndex += fixedBitAllocation[i] * coderRate;
+		int bitsDecoded = 0;
+		for (int row = 0; row < imageHeight; row++) {
+			for (int col = 0; col < imageWidth; col++) {
+				if ((row % 8 == 0) && (col % 8 == 0)) {
+					decodedData.add(cosqs.get(-1).decodeCodeWord(encodedData.subList(bitsDecoded, bitsDecoded + fixedBitAllocation[0][0] * coderRate))); // dc pixel
+					bitsDecoded += fixedBitAllocation[0][0] * coderRate;
+				}
+				else if (fixedBitAllocation[row % 8][col % 8] != 0) {
+					decodedData.add(cosqs.get(fixedBitAllocation[row % 8][col % 8] * coderRate).
+							decodeCodeWord(encodedData.subList(bitsDecoded, bitsDecoded + (fixedBitAllocation[row % 8][col % 8] * coderRate))));
+					bitsDecoded += fixedBitAllocation[row % 8][col % 8] * coderRate;
+				}
+				else
+					decodedData.add((double) 0); // if we didn't encode that pixel's value
+			}
 		}
 		return decodedData;
 	} // end decode()

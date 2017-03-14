@@ -5,7 +5,7 @@ import java.util.List;
 public class ChannelTest {
 
 	public static void main(String[] args) {
-		Channel channel = new Channel(0.2, 5, 2);
+		Channel channel = new Channel(0.2, 5);
 		
 		List<Byte> data = new ArrayList<Byte>(Collections.nCopies(100, (byte)(0)));
 		List<Byte> output = channel.sendThroughChannel(data);

@@ -4,6 +4,8 @@ import javax.swing.ImageIcon;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 
+import org.jtransforms.dct.DoubleDCT_2D;
+
 public class ImageManagerTest {
 
 	public static final String FILENAME = "Lenna.png";
@@ -24,9 +26,14 @@ public class ImageManagerTest {
 			offset += imageWidth;
 		}
 		
+		// test dct
+		DoubleDCT_2D dct = new DoubleDCT_2D(imageHeight, imageWidth);
+		dct.forward(rowMajorGrayScale, true);
+		dct.inverse(rowMajorGrayScale, true);
+		
 		BufferedImage image = ImageManager.getBufferedImageFromGrayScaleValues(rowMajorGrayScale, imageHeight);
 		
-		// spring stuff. not great, but just POC
+		// swing stuff. not great, but just POC
 		// shows the image as a pop-up
 		JDialog dialog = new JDialog();
 		dialog.setUndecorated(true);

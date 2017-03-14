@@ -12,7 +12,7 @@ import java.util.Random;
 public class CoderFactory {
 
 	private static final int RNG_SEED = 123456789; // used to generate training vectors
-	private static final int NUM_TRAINING_VECTORS = 10000;
+	private static final int NUM_TRAINING_VECTORS = 1000;
 	
 	private static final double MU = 0; // for the Laplacian distribution to have zero mean
 	private static final double BETA = Math.pow(2, -0.5); // for the Laplacian distribution to have unit variance
@@ -28,10 +28,9 @@ public class CoderFactory {
 	 * @param trainingChannel The channel with which the coder will be trained.
 	 * @param coderRate The overall rate of the coder.
 	 * @return A Coder object, either created anew or from the cache.
-	 * @throws MarkovMemoryException 
 	 */
-	public static Coder createCoder(Channel trainingChannel, int coderRate) throws MarkovMemoryException {
-		String potentialFilename = "coder-" + trainingChannel.getBitErrorRate() + trainingChannel.getBurstLevel() + ".ser";
+	public static Coder createCoder(Channel trainingChannel, int coderRate) {
+		String potentialFilename = "coder-" + trainingChannel.getBitErrorRate() + "-" + trainingChannel.getBurstLevel() + ".ser";
 		try (
 			FileInputStream fileIn = new FileInputStream(potentialFilename);
 			ObjectInputStream in = new ObjectInputStream(fileIn)
@@ -67,9 +66,8 @@ public class CoderFactory {
 	 * @param trainingChannel The channel with which the COSQs will be trained.
 	 * @param coderRate The overall rate of the coder.
 	 * @return A Map from COSQ rates to COSQ objects. 
-	 * @throws MarkovMemoryException 
 	 */
-	private static Map<Integer, COSQ> generateCOSQs(Channel trainingChannel, int coderRate) throws MarkovMemoryException {
+	private static Map<Integer, COSQ> generateCOSQs(Channel trainingChannel, int coderRate) {
 		Map<Integer, COSQ> cosqs = new HashMap<>();
 		List<Double> dcTrainingData = generateDCTrainingData(NUM_TRAINING_VECTORS);
 		List<Double> acTrainingData = generateACTrainingData(NUM_TRAINING_VECTORS);
