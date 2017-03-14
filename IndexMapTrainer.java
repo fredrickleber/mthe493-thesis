@@ -6,8 +6,8 @@ public class IndexMapTrainer{
 	
 	// Simulated annealing parameters from Julian's thesis
 	private final double TEMP_INIT = 10.0;
-	private final double TEMP_FINAL = 0.5;
-	private final double COOLING_MULTIPLIER = 0.9;
+	private final double TEMP_FINAL = 0.0025;
+	private final double COOLING_MULTIPLIER = 0.97;
 	private final double MAX_PERTURBATIONS = 200;
 	
 	// Channel parameters
@@ -67,7 +67,7 @@ public class IndexMapTrainer{
 		System.out.println("Simulating annealing for rate " + this.NUM_BITS);
 		
 		// SA algorithm
-		while(true) {
+		while(temp >= TEMP_FINAL) {
 			numPertubations = 0;
 			while(numPertubations++ < MAX_PERTURBATIONS) {
 				// Randomly select new state
@@ -96,8 +96,6 @@ public class IndexMapTrainer{
 			
 			temp *= COOLING_MULTIPLIER; // cool system
 			System.out.println(temp);
-			if (temp < TEMP_FINAL)
-				break;
 		}
 		return convertToBinary(bestState);
 	}

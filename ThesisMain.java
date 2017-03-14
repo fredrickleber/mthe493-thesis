@@ -8,7 +8,7 @@ import javax.swing.JLabel;
 public class ThesisMain {
 
 	public static void main(String[] args) {
-		Channel testChannel = new Channel(0.2, 5);
+		Channel testChannel = new Channel(0.01, 5);
 		Coder testCoder = CoderFactory.createCoder(testChannel, 1);
 		List<Byte> encodedImage = testCoder.encodeImage("Lenna.png");
 		List<Byte> distortedEncodedImage = testChannel.sendThroughChannel(encodedImage);
