@@ -52,14 +52,17 @@ public class Channel {
 			
 			// check whether or not the bit was flipped based on calculated prob
 			byte potentiallyFlippedBit;
-			if (randNumber <= errorProb)
+			if (randNumber <= errorProb) {
 				potentiallyFlippedBit = (byte) ((encodedImage.get(i) + 1) % 2);
-			else
+				history.add((byte) 1);
+			}
+			else {
 				potentiallyFlippedBit = encodedImage.get(i);
+				history.add((byte) 0);
+			}
 			
 			// update output and history queue
 			channelOutput.add(potentiallyFlippedBit);
-			history.add(potentiallyFlippedBit);
 			history.remove();
 		}
 		return channelOutput;

@@ -6,7 +6,7 @@ public class IndexMapTrainer{
 	
 	// Simulated annealing parameters from Julian's thesis
 	private final double TEMP_INIT = 10.0;
-	private final double TEMP_FINAL = 0.0025;
+	private final double TEMP_FINAL = 0.00025;
 	private final double COOLING_MULTIPLIER = 0.97;
 	private final double MAX_PERTURBATIONS = 200;
 	
@@ -48,6 +48,7 @@ public class IndexMapTrainer{
 	 * @return Index map, where each index is represented in binary via a byte list.
 	 */
 	public List<List<Byte>> train(List<Double> trainingData){
+		
 		// Initialize State
 		ArrayList<Integer> state = new ArrayList<Integer>(SIZE);
 		ArrayList<Integer> nextState;
@@ -58,7 +59,7 @@ public class IndexMapTrainer{
 		// Initialize System
 		double temp = TEMP_INIT;
 		int numPertubations = 0;
-		Collections.shuffle(state); // Random initial state
+		// Collections.shuffle(state); // Random initial state
 		double energy = expectedDistortion(trainingData, state);
 		double newEnergy;
 		double oldEnergy = energy;
@@ -122,10 +123,9 @@ public class IndexMapTrainer{
 		int mappedIndex;
 		int numSourceWords = trainingData.size();
 		for (double sourceWord : trainingData) {
-			for (int j = 0; j < SIZE; j ++) {
-				mappedIndex = state.get(encodedIndex(sourceWord));
+			mappedIndex = state.get(encodedIndex(sourceWord));
+			for (int j = 0; j < SIZE; j ++)
 				expectedDistortion += CONDITIONAL_PROB[mappedIndex][j] * Math.pow(sourceWord - codebook.get(j), 2) / numSourceWords;
-			}
 		}
 		return expectedDistortion;
 	}

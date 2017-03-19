@@ -22,6 +22,10 @@ public class Coder implements java.io.Serializable {
 													   {0, 0, 0, 0, 0, 0, 0, 0}};
 	
 	private int coderRate; // encoder/decoder rate. bit allocation is multiplied by this positive integer
+	private double meanCoeffDC = 0;	// sample mean of the DC coefficients produced by the DCT
+	private double meanCoeffAC = 0; // sample mean of the AC coefficients produced by the DCT
+	private double varCoeffDC = 0;	// sample variance of the DC coefficients produced by the DCT
+	private double varCoeffAC = 0;  // sample variance of the AC coefficients produced by the DCT
 	private Map<Integer, COSQ> cosqs;
 
 
@@ -37,23 +41,41 @@ public class Coder implements java.io.Serializable {
 	 */
 	public List<Byte> encodeImage(String filename) {
 		double[][] grayScalePixelValues = ImageManager.getGrayScaleValuesFromFilename(filename);
-		double[][] imageCoefficients = new double[BLOCK_SIZE][BLOCK_SIZE]; // required since DCT is applied in-place
-		List<Byte> encodedData = new ArrayList<Byte>(grayScalePixelValues.length * grayScalePixelValues[0].length);
-		int rowFactor = grayScalePixelValues.length / BLOCK_SIZE; // number of NxN blocks per row
-		int colFactor = grayScalePixelValues[0].length / BLOCK_SIZE; // number of NxN blocks per column
+		int imageHeight = grayScalePixelValues.length;
+        int imageWidth = grayScalePixelValues[0].length;
+		double[] imageBlockCoeffs = new double[BLOCK_SIZE * BLOCK_SIZE]; // required since DCT is applied in-place
+		double[] imageCoefficients = new double[imageHeight * imageWidth]; // row-major form
+		double[] normBlockCoeffs = new double[BLOCK_SIZE * BLOCK_SIZE];
+		List<Byte> encodedData = new ArrayList<Byte>(imageHeight * imageWidth);
+		int rowFactor = imageHeight / BLOCK_SIZE; // number of NxN blocks per row
+		int colFactor = imageWidth / BLOCK_SIZE; // number of NxN blocks per column
 		
 		// apply DCT on NxN grids
 		DoubleDCT_2D dct = new DoubleDCT_2D(BLOCK_SIZE, BLOCK_SIZE);
 		for (int i = 0; i < rowFactor; i++) {
 			for (int j = 0; j < colFactor; j++) {
 				// get pixelValues into NxN array
-				for (int k = 0; k < BLOCK_SIZE; k++) {
-					for (int l = 0; l < BLOCK_SIZE; l++) {
-						imageCoefficients[k][l] = grayScalePixelValues[i * BLOCK_SIZE + k][j * BLOCK_SIZE + l];
+				for (int row = 0; row < BLOCK_SIZE; row++) {
+					for (int col = 0; col < BLOCK_SIZE; col++) {
+						imageBlockCoeffs[row * BLOCK_SIZE + col] = grayScalePixelValues[i * BLOCK_SIZE + row][j * BLOCK_SIZE + col];
 					}
 				}
-				dct.forward(imageCoefficients, true); // performs the dct in-place on the given array
-				encodedData.addAll(encodeCoefficients(imageCoefficients)); // encode the block
+				dct.forward(imageBlockCoeffs, true); // performs the dct in-place on the given array	
+				// store coefficients in row-major form
+				for (int row = 0; row < BLOCK_SIZE; row++) {
+					for (int col = 0; col < BLOCK_SIZE; col++) {
+						imageCoefficients[(((i * BLOCK_SIZE) + row) * imageWidth) + (j * BLOCK_SIZE) + col] = imageBlockCoeffs[row * BLOCK_SIZE + col];
+					}
+				}
+			}
+		}
+		calcSampleMean(imageCoefficients, rowFactor, colFactor);		// compute the sample mean of the dct coefficients
+		calcSampleVariance(imageCoefficients, rowFactor, colFactor);	// compute the sample variance of the dct coefficients
+		// normalize and encode blocks
+		for (int i = 0; i < rowFactor; i++) {
+			for (int j = 0; j < colFactor; j++) {
+				normBlockCoeffs = normalizeCoefficients(imageCoefficients, i, j, imageWidth);
+				encodedData.addAll(encodeCoefficients(normBlockCoeffs)); // encode the block
 			}
 		}
 		return encodedData;
@@ -82,8 +104,9 @@ public class Coder implements java.io.Serializable {
 			for (int j = 0; j < colFactor; j++) {
 				// get coefficients for NxN block
 				decodedBlock = decodeCoefficients(encodedData.subList(bitsDecoded, bitsDecoded + blockArea));
-				for (int k = 0; k < blockArea; k++)
-					dctBlock[k] = decodedBlock.get(k); // convert List to array
+				dctBlock[0] = Math.sqrt(varCoeffDC) * decodedBlock.get(0) + meanCoeffDC; // de-normalize DC coefficient
+				for (int k = 1; k < blockArea; k++)
+					dctBlock[k] =  Math.sqrt(varCoeffAC) * decodedBlock.get(k) + meanCoeffAC; // de-normalize AC coefficients
 				
 				dct.inverse(dctBlock, true); // performs the inverse dct in-place on the given array
 				
@@ -104,14 +127,14 @@ public class Coder implements java.io.Serializable {
 	 * @param dctData The data given after applying the discrete cosine transform.
 	 * @return The encoded data, as a List of Bytes.
 	 */
-	private List<Byte> encodeCoefficients(double[][] dctData) {
+	private List<Byte> encodeCoefficients(double[] dctData) {
 		List<Byte> encodedData = new ArrayList<>();
 		for (int row = 0; row < BLOCK_SIZE; row++) {
 			for (int col = 0; col < BLOCK_SIZE; col++) {
 				if ((row == 0) && (col == 0))
-					encodedData.addAll(cosqs.get(-1).encodeSourceWord(dctData[row][col])); // dc pixel
+					encodedData.addAll(cosqs.get(-1).encodeSourceWord(dctData[row * BLOCK_SIZE + col])); // dc pixel
 				else if (fixedBitAllocation[row][col] != 0) // make sure we are supposed to encode the value
-					encodedData.addAll(cosqs.get(fixedBitAllocation[row][col] * coderRate).encodeSourceWord(dctData[row][col]));	
+					encodedData.addAll(cosqs.get(fixedBitAllocation[row][col] * coderRate).encodeSourceWord(dctData[row * BLOCK_SIZE + col]));	
 			}
 		}
 		return encodedData;
@@ -152,4 +175,80 @@ public class Coder implements java.io.Serializable {
 		this.coderRate = coderRate;
 	} // end setCoderRate()
 	
+	/**
+	 * Calculate the sample mean of the DCT coefficients.
+	 * @param coefficients DCT coefficients.
+	 * @param rowFactor	Number of NxN blocks spanning the height of the image.
+	 * @param colFactor Number of NxN blocks spanning the width of the image.
+	 */
+	private void calcSampleMean(double[] coefficients, int rowFactor, int colFactor) {
+		int imageWidth = BLOCK_SIZE * colFactor; // width of image (pixels)
+		int numPixelDC = rowFactor * colFactor; // number of DC pixels
+		int numPixelAC = coefficients.length  - numPixelDC; // number of AC pixels
+		int index; // index in row-major form
+		for (int i = 0; i < rowFactor; i++) {
+			for (int j = 0; j < colFactor; j++) {
+				// Iterate through the NxN block
+				for (int row = 0; row < BLOCK_SIZE; row++) {
+					for (int col = 0; col < BLOCK_SIZE; col++) {
+						index = ((i * BLOCK_SIZE) + row) * imageWidth + j * BLOCK_SIZE + col;
+						if (row == 0 && col == 0)
+							meanCoeffDC += coefficients[index] / numPixelDC;
+						else
+							meanCoeffAC += coefficients[index] / numPixelAC;
+					}
+				}
+			}
+		}
+	} // end calcSampleMean()
+	
+	/**
+	 * Calculate the sample variance of the DCT coefficients.
+	 * @param coefficients DCT coefficients.
+	 * @param rowFactor	Number of NxN blocks spanning the height of the image.
+	 * @param colFactor Number of NxN blocks spanning the width of the image.
+	 */
+	private void calcSampleVariance(double[] coefficients, int rowFactor, int colFactor) {
+		int imageWidth = BLOCK_SIZE * colFactor; // width of image (pixels)
+		int numPixelDC = rowFactor * colFactor; // number of DC pixels
+		int numPixelAC = coefficients.length - numPixelDC; // number of AC pixels
+		int index; // index in row-major form
+		for (int i = 0; i < rowFactor; i++) {
+			for (int j = 0; j < colFactor; j++) {
+				// Iterate through the NxN block
+				for (int row = 0; row < BLOCK_SIZE; row++) {
+					for (int col = 0; col < BLOCK_SIZE; col++) {
+						index = ((i * BLOCK_SIZE) + row) * imageWidth + j * BLOCK_SIZE + col;
+						if (row == 0 && col == 0)
+							varCoeffDC += Math.pow(coefficients[index] - meanCoeffDC, 2) / numPixelDC;
+						else
+							varCoeffAC += Math.pow(coefficients[index] - meanCoeffAC, 2) / numPixelAC;
+					}
+				}
+			}
+		}
+	} // end calcSampleVariance()
+	
+	/**
+	 * Normalize the DCT coefficients.
+	 * @param coefficients DCT coefficients.
+	 * @param blockRow	Row index of the block being encoded.
+	 * @param blockCol  Column index of the block being encoded.
+	 */
+	private double[] normalizeCoefficients(double[] coefficients, int blockRow, int blockCol, int imageWidth) {
+		double[] normCoeffs = new double[coefficients.length]; // normalized coefficients
+		int index; // index in row-major form
+		// get pixelValues into NxN array
+		for (int row = 0; row < BLOCK_SIZE; row++) {
+			for (int col = 0; col < BLOCK_SIZE; col++) {
+				index = ((blockRow * BLOCK_SIZE) + row) * imageWidth + blockCol * BLOCK_SIZE + col;
+				if (row == 0 && col == 0)
+					normCoeffs[row * BLOCK_SIZE + col] = (coefficients[index] - meanCoeffDC) / Math.sqrt(varCoeffDC);
+				else
+					normCoeffs[row * BLOCK_SIZE + col] = (coefficients[index] - meanCoeffAC) / Math.sqrt(varCoeffAC);
+			}
+		}
+		return normCoeffs;
+	} // end normalizeCoefficients()
 }
+

@@ -12,7 +12,7 @@ import java.util.Random;
 public class CoderFactory {
 
 	private static final int RNG_SEED = 123456789; // used to generate training vectors
-	private static final int NUM_TRAINING_VECTORS = 1000;
+	private static final int NUM_TRAINING_VECTORS = 10000;
 	
 	private static final double MU = 0; // for the Laplacian distribution to have zero mean
 	private static final double BETA = Math.pow(2, -0.5); // for the Laplacian distribution to have unit variance
@@ -37,11 +37,13 @@ public class CoderFactory {
 		) {
 			Coder deserializedCoder = (Coder) in.readObject();
 			deserializedCoder.setCoderRate(coderRate);
+			System.out.println("Loaded coder successfully!");
 			return deserializedCoder;
 		} catch (IOException i) {
 			// if there was no such coder serialized, construct a new one
 			Coder newCoder = new Coder(generateCOSQs(trainingChannel, coderRate), coderRate);
 			serializeNewCoder(newCoder, potentialFilename);
+			System.out.println("Making new coder!");
 			return newCoder;
 		} catch (ClassNotFoundException c) {
 			System.out.println("Coder class not found");
