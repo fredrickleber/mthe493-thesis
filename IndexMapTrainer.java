@@ -5,14 +5,11 @@ import java.util.List;
 public class IndexMapTrainer{
 	
 	// Simulated annealing parameters from Julian's thesis
-	private final double TEMP_INIT = 10.0;
+	private final double TEMP_INIT = 10;
 	private final double TEMP_FINAL = 0.00025;
 	private final double COOLING_MULTIPLIER = 0.97;
 	private final double MAX_PERTURBATIONS = 200;
 	
-	// Channel parameters
-	private final double BIT_ERROR_RATE, BURST_LEVEL;		// epsilon, delta in thesis
-	private final double PROB00, PROB01, PROB10, PROB11;	// Transition probabilities given by probAB := P(A|B)
 	public final double[][] CONDITIONAL_PROB; 				// [i][j] : Conditional probability of changing from index i to index j
 	
 	// Codebook & relevant parameters
@@ -27,17 +24,10 @@ public class IndexMapTrainer{
 	 * @param trainingChannel Channel used to train data.
 	 */
 	public IndexMapTrainer (List<Double> codebook, Channel trainingChannel) {
-		this.BIT_ERROR_RATE = trainingChannel.getBitErrorRate();
-		this.BURST_LEVEL = trainingChannel.getBurstLevel();
 		this.codebook = codebook;
 		this.SIZE = codebook.size();
 		this.NUM_BITS = (int) (Math.log(codebook.size())/Math.log(2));
-
-		this.PROB00 = (1 - BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
-		this.PROB01 = (1 - BIT_ERROR_RATE) / (1 + BURST_LEVEL);
-		this.PROB10 = BIT_ERROR_RATE / (1 +  BURST_LEVEL);
-		this.PROB11 = (BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
-		this.CONDITIONAL_PROB = initializeConditionalProb();
+		this.CONDITIONAL_PROB = trainingChannel.initializeConditionalProb(SIZE);
 	}
 	
 	/**
@@ -143,42 +133,7 @@ public class IndexMapTrainer{
 		}
 		return bestIndex;
 	}
-	
-	/**
-	 * Compute all transition probabilities using the attributes of the channel.
-	 * @return	Matrix containing these transition probabilities.
-	 */
-	private double[][] initializeConditionalProb() {
-		double[][] conditionalProb = new double[SIZE][SIZE];
-		int errorWord;
-		boolean pastError;
-		double probError;
-		for (int i = 0; i < SIZE; i++) { 			// i = word sent
-			for (int j = 0; j < SIZE; j++) {		// j = word received
-				errorWord = i ^ j;
-				if ((errorWord & 1) == 0) {
-					probError = 0.5;
-					pastError = false;
-				}
-				else {
-					probError = 0.5;
-					pastError = true;
-				}
-				for (int k = 1; k < NUM_BITS; k++) {
-					if (((errorWord >> k) & 1) == 0) {
-						probError *= pastError ? PROB01 : PROB00;
-						pastError = false;
-					}
-					else {
-						probError *= pastError ? PROB11 : PROB10;
-						pastError = true;
-					}
-				}
-				conditionalProb[i][j] = probError;
-			}
-		}
-		return conditionalProb;
-	}
+
 	
 	/**
 	 * Converts the index map (state) to a binary (byte list) representation.

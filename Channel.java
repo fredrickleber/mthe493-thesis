@@ -7,6 +7,7 @@ public class Channel {
 
 	private final double BIT_ERROR_RATE, BURST_LEVEL;
 	private final int MARKOV_ORDER; // the order of the markov process (remembers last M results)
+	private final double PROB00, PROB01, PROB10, PROB11;	// Transition probabilities given by probAB := P(A|B)
 	private LinkedList<Byte> history;
 
 
@@ -18,7 +19,11 @@ public class Channel {
 	public Channel(double bitErrorRate, double burstLevel) {
 		this.BIT_ERROR_RATE = bitErrorRate;
 		this.BURST_LEVEL = burstLevel;
-		this.MARKOV_ORDER = 1; 
+		this.MARKOV_ORDER = 1;
+		this.PROB00 = (1 - BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
+		this.PROB01 = (1 - BIT_ERROR_RATE) / (1 + BURST_LEVEL);
+		this.PROB10 = BIT_ERROR_RATE / (1 +  BURST_LEVEL);
+		this.PROB11 = (BIT_ERROR_RATE + BURST_LEVEL) / (1 + BURST_LEVEL);
 	} // end two-parameter constructor
 	
 	public double getBitErrorRate(){
@@ -80,5 +85,41 @@ public class Channel {
 		for (int i = 0; i < MARKOV_ORDER; i++)
 			history.add((byte) 0);
 	} // end initializeQueue()
+	
+	/**
+	 * Compute all transition probabilities using the attributes of the channel.
+	 * @return	Matrix containing these transition probabilities.
+	 */
+	public double[][] initializeConditionalProb(int size) {
+		double[][] conditionalProb = new double[size][size];
+		int errorWord;
+		boolean pastError;
+		double probError;
+		for (int i = 0; i < size; i++) { 			// i = word sent
+			for (int j = 0; j < size; j++) {		// j = word received
+				errorWord = i ^ j;
+				if ((errorWord & 1) == 0) {
+					probError = 0.5;
+					pastError = false;
+				}
+				else {
+					probError = 0.5;
+					pastError = true;
+				}
+				for (int k = 1; k < size; k++) {
+					if (((errorWord >> k) & 1) == 0) {
+						probError *= pastError ? PROB00 : PROB00;
+						pastError = false;
+					}
+					else {
+						probError *= pastError ? PROB11 : PROB10;
+						pastError = true;
+					}
+				}
+				conditionalProb[i][j] = probError;
+			}
+		}
+		return conditionalProb;
+	}
 
 }

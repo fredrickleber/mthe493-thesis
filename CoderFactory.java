@@ -76,14 +76,14 @@ public class CoderFactory {
 		CodeMapTrainer codeMapTrainer = new CodeMapTrainer();
 		
 		// generate the DC pixel COSQ
-		List<Double> dcCodebook = codeMapTrainer.generateCodebook(dcTrainingData, (int) Math.pow(2, UNIQUE_DC_PIXEL_QUANTIZER_RATE * coderRate));
+		List<Double> dcCodebook = codeMapTrainer.generateInitialCodebook(dcTrainingData, (int) Math.pow(2, UNIQUE_DC_PIXEL_QUANTIZER_RATE * coderRate));
 		IndexMapTrainer dcIndexMapTrainer = new IndexMapTrainer(dcCodebook, trainingChannel);
 		// give the DC pixel COSQ a key of -1 to ensure it is unique
 		cosqs.put(-1, new COSQ(dcCodebook, dcIndexMapTrainer.train(dcTrainingData)));
 
 		// generate the AC pixel COSQs
 		for (int rate : UNIQUE_AC_PIXEL_QUANTIZER_RATES) {
-			List<Double> acCodebook = codeMapTrainer.generateCodebook(acTrainingData, (int) Math.pow(2, rate * coderRate));
+			List<Double> acCodebook = codeMapTrainer.generateInitialCodebook(acTrainingData, (int) Math.pow(2, rate * coderRate));
 			IndexMapTrainer acIndexMapTrainer = new IndexMapTrainer(acCodebook, trainingChannel);
 			cosqs.put(rate * coderRate, new COSQ(acCodebook, acIndexMapTrainer.train(acTrainingData)));
 		}

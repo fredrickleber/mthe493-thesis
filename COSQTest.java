@@ -6,8 +6,8 @@ public class COSQTest {
 	
 	private static final int RNG_SEED = 123456789; // used to generate training vectors
 	private static final int NUM_TRAINING_VECTORS = 10000;
-	private static final int RATE = 3;
-	private static final double ERROR_RATE = 0.05;	// Bit error rate (epislon in thesis)
+	private static final int RATE = 2;
+	private static final double ERROR_RATE = 0.1;	// Bit error rate (epsilon in thesis)
 	private static final double BURST_LEVEL = 10;	// Burst parameter (delta in thesis)
 	
 	private static final double MU = 0; // for the Laplacian distribution to have zero mean
@@ -24,7 +24,9 @@ public class COSQTest {
 		double acSNR = computeSNR(acCOSQ, acTrainingData, trainingChannel);
 		
 		System.out.println("SNR for DC COSQ: " + dcSNR);
+		System.out.println("PSNR for DC COSQ: " + (10 * Math.log10(255) + dcSNR));
 		System.out.println("SNR for AC COSQ: " + acSNR);
+		System.out.println("PSNR for AC COSQ: " + (10 * Math.log10(255) + acSNR));
 	}
 	
 	/**
@@ -41,7 +43,6 @@ public class COSQTest {
 			reproducedWord = cosq.decodeCodeWord(channel.sendThroughChannel(cosq.encodeSourceWord(sourceWord)));
 			avgDistortion += Math.pow(sourceWord - reproducedWord, 2) / sourceWords.size();
 		}
-		System.out.println(avgDistortion);
 		return - 10 * Math.log10(avgDistortion);
 	} // end computeSNR
 	
@@ -53,7 +54,7 @@ public class COSQTest {
 	 */
 	private static COSQ trainCOSQ(List<Double> trainingData, Channel trainingChannel) {
 		CodeMapTrainer codeMapTrainer = new CodeMapTrainer();
-		List<Double> codebook = codeMapTrainer.generateCodebook(trainingData, (int) Math.pow(2, RATE));
+		List<Double> codebook = codeMapTrainer.generateInitialCodebook(trainingData, (int) Math.pow(2, RATE));
 		IndexMapTrainer indexMapTrainer = new IndexMapTrainer(codebook, trainingChannel);
 		return new COSQ(codebook, indexMapTrainer.train(trainingData));
 	} // end trainCOSQ()
