@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +13,7 @@ import java.util.Random;
 public class CoderFactory {
 
 	private static final int RNG_SEED = 123456789; // used to generate training vectors
-	private static final int NUM_TRAINING_VECTORS = 10000;
+	private static final int NUM_TRAINING_VECTORS = 50000;
 	
 	private static final double MU = 0; // for the Laplacian distribution to have zero mean
 	private static final double BETA = Math.pow(2, -0.5); // for the Laplacian distribution to have unit variance
@@ -24,13 +25,13 @@ public class CoderFactory {
 
 
 	/**
-	 * Checks if a Coder is cached and returns it if so. If not, creates a new one and returns that.
-	 * @param trainingChannel The channel with which the coder will be trained.
+	 * Checks if a Coder is cached and returns it if so
+	 * @param trainingChannel The channel with which the coder was trained.
 	 * @param coderRate The overall rate of the coder.
-	 * @return A Coder object, either created anew or from the cache.
+	 * @return A Coder object.
 	 */
-	public static Coder createCoder(Channel trainingChannel, int coderRate) {
-		String potentialFilename = "coder-" + trainingChannel.getBitErrorRate() + "-" + trainingChannel.getBurstLevel() + ".ser";
+	public static Coder loadCoder(Channel channel, int coderRate) {
+		String potentialFilename = "coder-" + channel.getBitErrorRate() + "-" + channel.getBurstLevel() + ".ser";
 		try (
 			FileInputStream fileIn = new FileInputStream(potentialFilename);
 			ObjectInputStream in = new ObjectInputStream(fileIn)
@@ -40,17 +41,77 @@ public class CoderFactory {
 			System.out.println("Loaded coder successfully!");
 			return deserializedCoder;
 		} catch (IOException i) {
-			// if there was no such coder serialized, construct a new one
-			Coder newCoder = new Coder(generateCOSQs(trainingChannel, coderRate), coderRate);
-			serializeNewCoder(newCoder, potentialFilename);
-			System.out.println("Making new coder!");
-			return newCoder;
+			System.out.println("Coder class not found");
+			return null;
 		} catch (ClassNotFoundException c) {
 			System.out.println("Coder class not found");
 			c.printStackTrace();
 			return null;
 		}		
-	} // end createCoder()
+	} // end loadCoder()
+	
+	/**
+	 * Creates a new coder.
+	 * @param channel Training channel.
+	 * @param coderRate Rate of the coder.
+	 * @return New coder.
+	 */
+	public static Coder makeCoder(Channel channel, int coderRate) {
+		String potentialFilename = "coder-" + channel.getBitErrorRate() + "-" + channel.getBurstLevel() + ".ser";
+		System.out.println("Making new coder(s)!");
+		Coder newCoder = new Coder(generateCOSQs(channel, coderRate), coderRate);
+		serializeNewCoder(newCoder, potentialFilename);
+		return newCoder;
+	} // end makeCoder()
+	
+	/**
+	 * Trains and serializes multiple coders of rate 1.
+	 * @param bitErrorRates Array of the bit error rates associated with each coder.
+	 * @param coderRate The overall rate of the coder.
+	 */
+	public static void createMultipleCoders(double[] bitErrorRates, double burstLevel) {
+		Arrays.sort(bitErrorRates);
+		List<Double> dcTrainingData = generateDCTrainingData(NUM_TRAINING_VECTORS);
+		List<Double> acTrainingData = generateACTrainingData(NUM_TRAINING_VECTORS);
+		Map<Integer, List<Double>> codebooks = new HashMap<>();
+		Map<Integer, COSQ> cosqs = new HashMap<>();
+		CodeMapTrainer codeMapTrainer = new CodeMapTrainer();
+		Channel trainingChannel = new Channel(bitErrorRates[0], burstLevel);
+		
+		// Initialize the DC pixel codebook
+		List<Double> dcCodebook = codeMapTrainer.generateInitialCodebook(dcTrainingData, (int) Math.pow(2, UNIQUE_DC_PIXEL_QUANTIZER_RATE));
+		IndexMapTrainer dcIndexMapTrainer = new IndexMapTrainer(dcCodebook, trainingChannel);
+		dcCodebook = dcIndexMapTrainer.train();
+		
+		// Initialize the AC pixel codebooks
+		for (int rate : UNIQUE_AC_PIXEL_QUANTIZER_RATES) {
+			List<Double> acCodebook = codeMapTrainer.generateInitialCodebook(acTrainingData, (int) Math.pow(2, rate));
+			IndexMapTrainer acIndexMapTrainer = new IndexMapTrainer(acCodebook, trainingChannel);
+			acCodebook = acIndexMapTrainer.train();
+			codebooks.put(rate, acCodebook);
+		}
+		
+		for (double bitErrorRate: bitErrorRates) {
+			System.out.println("Currently making the Coder for BER = " + bitErrorRate);
+			// update training Channel
+			trainingChannel = new Channel(bitErrorRate, burstLevel);
+			
+			// update DC codebook & generate the DC pixel COSQ 
+			dcCodebook = codeMapTrainer.generateUpdatedCodebook(dcTrainingData, dcCodebook, trainingChannel);
+			cosqs.put(-1, new COSQ(dcCodebook));
+
+			// update AC codebook & generate the AC pixel COSQs
+			for (int rate : UNIQUE_AC_PIXEL_QUANTIZER_RATES) {
+				List<Double> acCodebook = codeMapTrainer.generateUpdatedCodebook(acTrainingData, codebooks.get(rate), trainingChannel);
+				cosqs.put(rate, new COSQ(acCodebook));
+			}
+			
+			String filename = "coder-" + bitErrorRate + "-" + burstLevel + ".ser";
+			serializeNewCoder(new Coder(cosqs, 1), filename);
+		}
+		System.out.println("Done!");
+	} // end createMultipleCoders()
+	
 	
 	private static void serializeNewCoder(Coder coder, String filename) {
 		try (
@@ -78,14 +139,17 @@ public class CoderFactory {
 		// generate the DC pixel COSQ
 		List<Double> dcCodebook = codeMapTrainer.generateInitialCodebook(dcTrainingData, (int) Math.pow(2, UNIQUE_DC_PIXEL_QUANTIZER_RATE * coderRate));
 		IndexMapTrainer dcIndexMapTrainer = new IndexMapTrainer(dcCodebook, trainingChannel);
+		dcCodebook = dcIndexMapTrainer.train();
+		
 		// give the DC pixel COSQ a key of -1 to ensure it is unique
-		cosqs.put(-1, new COSQ(dcCodebook, dcIndexMapTrainer.train(dcTrainingData)));
+		cosqs.put(-1, new COSQ(dcCodebook));
 
 		// generate the AC pixel COSQs
 		for (int rate : UNIQUE_AC_PIXEL_QUANTIZER_RATES) {
 			List<Double> acCodebook = codeMapTrainer.generateInitialCodebook(acTrainingData, (int) Math.pow(2, rate * coderRate));
 			IndexMapTrainer acIndexMapTrainer = new IndexMapTrainer(acCodebook, trainingChannel);
-			cosqs.put(rate * coderRate, new COSQ(acCodebook, acIndexMapTrainer.train(acTrainingData)));
+			acCodebook = acIndexMapTrainer.train();
+			cosqs.put(rate * coderRate, new COSQ(acCodebook));
 		}
 		
 		return cosqs;

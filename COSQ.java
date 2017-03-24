@@ -11,11 +11,12 @@ public class COSQ implements java.io.Serializable {
 	private Map<List<Byte>, Double> decoderMap = new HashMap<>();
 
 
-	public COSQ(List<Double> codeWords, List<List<Byte>> binaryRepresentation) {
+	public COSQ(List<Double> codeWords) {
 		int numBits = (int) (Math.log(codeWords.size())/Math.log(2));
 		for (int i = 0; i < codeWords.size(); i++) {
-			encoderMap.put(codeWords.get(i), binaryRepresentation.get(i));
-			decoderMap.put(convertToBinary(i, numBits), codeWords.get(i));
+			List<Byte> binaryIndex = convertToBinary(i, numBits);
+			encoderMap.put(codeWords.get(i), binaryIndex);
+			decoderMap.put(binaryIndex, codeWords.get(i));
 		}
 	} // end constructor
 	

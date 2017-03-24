@@ -1,6 +1,7 @@
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class IndexMapTrainer{
 	
@@ -16,6 +17,8 @@ public class IndexMapTrainer{
 	private final List<Double> codebook;
 	private final int NUM_BITS; 							// number of bits needed to represent codewords
 	private final int SIZE; 								// number of codewords
+	Map<Double, Double> codemap;
+	Map<Double, Integer> indexCodemap;
 	
 	
 	/**
@@ -34,10 +37,9 @@ public class IndexMapTrainer{
 	 * Train the index map. Uses the Simulated Annealing (SA) algorithm presented in Julian's thesis.
 	 * Note that "state" is the index map in a non-binary form, and the name comes from SA convention.
 	 * Additionally, note that the term "energy" is equivalent to expected distortion, but is named as such due to SA convention.
-	 * @param trainingData Data used to train the map.
-	 * @return Index map, where each index is represented in binary via a byte list.
+	 * @return Codebook permuted according to the indexMap
 	 */
-	public List<List<Byte>> train(List<Double> trainingData){
+	public List<Double> train(){
 		
 		// Initialize State
 		ArrayList<Integer> state = new ArrayList<Integer>(SIZE);
@@ -50,7 +52,7 @@ public class IndexMapTrainer{
 		double temp = TEMP_INIT;
 		int numPertubations = 0;
 		// Collections.shuffle(state); // Random initial state
-		double energy = expectedDistortion(trainingData, state);
+		double energy = expectedDistortion(state);
 		double newEnergy;
 		double oldEnergy = energy;
 		double changeInEnergy; 		// delta in thesis
@@ -64,7 +66,7 @@ public class IndexMapTrainer{
 				// Randomly select new state
 				nextState = new ArrayList<Integer>(state);
 				Collections.shuffle(nextState);
-				newEnergy = expectedDistortion(trainingData, nextState);
+				newEnergy = expectedDistortion(nextState);
 				changeInEnergy = newEnergy - energy;
 				
 				// Decide whether to accept new state
@@ -86,9 +88,16 @@ public class IndexMapTrainer{
 			}
 			
 			temp *= COOLING_MULTIPLIER; // cool system
-			System.out.println(temp);
 		}
-		return convertToBinary(bestState);
+		// create new codebook
+		List<Double> permutedCodebook = new ArrayList<Double>(SIZE);
+		for (int i = 0; i < SIZE; i++)
+			permutedCodebook.add((double) 0);
+		for (int i = 0; i < SIZE; i++)
+			permutedCodebook.set(bestState.get(i), codebook.get(i));
+		if (SIZE == 4)
+			System.out.println(permutedCodebook);
+		return permutedCodebook;
 	}
 	
 	/**
@@ -108,51 +117,13 @@ public class IndexMapTrainer{
 	 * @param state	Current state of the system.
 	 * @return Expected distortion (energy).
 	 */
-	private double expectedDistortion(List<Double> trainingData, ArrayList<Integer> state) {
+	private double expectedDistortion(ArrayList<Integer> state) {
 		double expectedDistortion = 0;
-		int mappedIndex;
-		int numSourceWords = trainingData.size();
-		for (double sourceWord : trainingData) {
-			mappedIndex = state.get(encodedIndex(sourceWord));
+		for (int i = 0; i < SIZE; i++) {
 			for (int j = 0; j < SIZE; j ++)
-				expectedDistortion += CONDITIONAL_PROB[mappedIndex][j] * Math.pow(sourceWord - codebook.get(j), 2) / numSourceWords;
+				expectedDistortion += CONDITIONAL_PROB[state.get(i)][state.get(j)] * Math.pow(codebook.get(i) - codebook.get(j), 2);
 		}
 		return expectedDistortion;
 	}
-	
-	/**
-	 * Determine the index of the encoded source word.
-	 * @param sourceWord
-	 * @return Codeword index.
-	 */
-	private int encodedIndex(double sourceWord) {
-		int bestIndex = 0;
-		for (int i = 0; i < SIZE; i++) {
-			if (Math.abs(codebook.get(i) - sourceWord) < Math.abs(codebook.get(bestIndex) - sourceWord))
-				bestIndex = i;
-		}
-		return bestIndex;
-	}
-
-	
-	/**
-	 * Converts the index map (state) to a binary (byte list) representation.
-	 * @param indexMap
-	 * @return	Index map with entries represented in a binary (byte list) form.
-	 */
-	private List<List<Byte>> convertToBinary(List<Integer> indexMap) {
-		List<Byte> binaryForm;
-		List<List<Byte>> binaryIndexMap = new ArrayList<List<Byte>>(SIZE);
-		for(int index : indexMap) {
-			binaryForm = new ArrayList<Byte>(NUM_BITS);
-			for (int k = 0; k < NUM_BITS; k++) {
-				if (((index >> k) & 1) == 0)
-					binaryForm.add(0, (byte) 0);
-				else
-					binaryForm.add(0, (byte) 1);
-			}
-			binaryIndexMap.add(binaryForm);
-		}
-		return binaryIndexMap;
-	}
 }
+

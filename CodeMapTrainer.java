@@ -6,10 +6,11 @@ import java.util.Map;
 
 public class CodeMapTrainer {
 
-	public static final double EPSILON = 0.001; // a small number
+	public static final double EPSILON = 0.0005; // a small number
 	
 	private List<Double> sourceVectors, codeVectors;
 	private Map<Double, Double> codemap;
+	private Map<Double, Integer> codeIndexMap;
 	private double[][] transitionMatrix;
 	
 	/**
@@ -59,19 +60,17 @@ public class CodeMapTrainer {
 	public List<Double> generateUpdatedCodebook(List<Double> sourceVectors, List<Double> initialCodebook, Channel channel) {
 		this.sourceVectors = sourceVectors;
 		this.codeVectors = initialCodebook;
-		double prevAvgDistortion; // D^(i-1) on data-compression.com
-		double currAvgDistortion;// D^(i) on data-compression.com
-		
-		updateCodemapWithProbability(); // import the codemap using the initial codebook
-
 		this.transitionMatrix = channel.initializeConditionalProb(this.codeVectors.size());
 		
+		updateCodemapWithProbability();
+		double prevAvgDistortion; // D^(i-1) on data-compression.com
+		double currAvgDistortion = calculateAverageDistortionWithProbability(); // D^(i) on data-compression.com
 		
 		do {
 			prevAvgDistortion = currAvgDistortion;
 			updateCodemapWithProbability();
 			updateCodeVectorsWithProbability();
-			currAvgDistortion = calculateAverageDistortion();
+			currAvgDistortion = calculateAverageDistortionWithProbability();
 		} while((prevAvgDistortion - currAvgDistortion) /
 				prevAvgDistortion > CodeMapTrainer.EPSILON);
 		
@@ -80,43 +79,6 @@ public class CodeMapTrainer {
 		// Collections.sort(codeVectors); Please not this is NOT used in this case
 		return codeVectors;		
 	} // end generateUpdatedCodebook()
-
-	
-	// LEFT AS A LEGACY METHOD SO THAT THE TESTING CLASS STILL WORKS
-	/**
-	 * Performs scalar quantization on a set of (1-dimensional) source vectors
-	 * @param sourceVectors The source data to be quantized.
-	 * @param desiredNumCodeVectors The minimum desired number of code vectors. Note that the
-	 * number of code vectors must be a power of two, so this number is only a lower bound.
-	 * @return The codemap, mapping the input source data to its corresponding codeword.
-	 */
-	public Map<Double, Double> generateCodeMap(List<Double> sourceVectors, int desiredNumCodeVectors) {
-		this.sourceVectors = sourceVectors;
-		this.codeVectors = new ArrayList<>();
-		double prevAvgDistortion; // D^(i-1) on data-compression.com
-		double currAvgDistortion;// D^(i) on data-compression.com
-		
-		// set up the initial code vector, as seen in Step 2 on data-compression.com
-		double initialCodeVector = (1.0 / sourceVectors.size()) * 
-				(sourceVectors.stream().reduce(0.0, (x,y) -> x+y));
-		codeVectors.add(initialCodeVector);
-		
-		updateCodemap();
-		currAvgDistortion = calculateAverageDistortion();
-		
-		while (codeVectors.size() < desiredNumCodeVectors) {
-			splitCodeVectors();
-			do {
-				prevAvgDistortion = currAvgDistortion;
-				updateCodemap();
-				updateCodeVectors();
-				currAvgDistortion = calculateAverageDistortion();
-			} while((prevAvgDistortion - currAvgDistortion) /
-					prevAvgDistortion > CodeMapTrainer.EPSILON);
-		}
-		updateCodemap();
-		return codemap;
-	} // end generateCodeMap()
 
 	private void splitCodeVectors() {
 		List<Double> tempCodeVectors = new ArrayList<>();
@@ -143,18 +105,17 @@ public class CodeMapTrainer {
 		}
 	} // end updateCodemap()
 
-	// see page 30 of thesis
+	/**
+	 * Updates codemap and codeIndexMap which map each sourceword to the appropriate codeword and index, respectively.
+	 */
 	private void updateCodemapWithProbability() {
-		this.codemap = new HashMap<>();
-		
-		for (int i = 0; i < sourceVectors.size(); i++) {
-			int currMinIndex = 0;
-			for (int j = 0; j < codeVectors.size(); j++) {
-				if (Math.pow(sourceVectors.get(i) - codeVectors.get(j), 2) * transitionMatrix[i][j] <
-						Math.pow(sourceVectors.get(i) - codeVectors.get(currMinIndex), 2) * transitionMatrix[i][currMinIndex] )
-					currMinIndex = j;
-			}
-			codemap.put(sourceVectors.get(i), codeVectors.get(currMinIndex));
+		this.codemap = new HashMap<>(sourceVectors.size());
+		this.codeIndexMap = new HashMap<>(sourceVectors.size());
+		int bestIndex;
+		for (double sourceVector : sourceVectors) {
+			bestIndex = calcBestIndex(sourceVector);
+			codeIndexMap.put(sourceVector, bestIndex);
+			codemap.put(sourceVector, codeVectors.get(bestIndex));
 		}
 	} // end updateCodemapWithProbability()
 	
@@ -182,14 +143,18 @@ public class CodeMapTrainer {
 		for (int j = 0; j < codeVectors.size(); j++) {
 			numeratorSum = 0;
 			denominatorSum = 0;
-			for (int i = 0; i < sourceVectors.size(); i++) {
-				if (codemap.get(sourceVectors.get(i)).equals(codeVectors.get(j))) {
-					numeratorSum += (sourceVectors.get(i) * transitionMatrix[i][j]) / sourceVectors.size();
-					denominatorSum += transitionMatrix[i][j] / sourceVectors.size();
+			for (int i = 0; i < codeVectors.size(); i++) {
+				for (double sourceVector : sourceVectors) {
+					if (codemap.get(sourceVector).equals(codeVectors.get(i))) {
+						numeratorSum += transitionMatrix[i][j] * sourceVector / sourceVectors.size();
+						denominatorSum += transitionMatrix[i][j] / sourceVectors.size();
+					}
 				}
 			}
 			tempCodeVectors.add(numeratorSum / denominatorSum);
 		}
+		if (codeVectors.size() == 4)
+			System.out.println(tempCodeVectors);
 		codeVectors = tempCodeVectors;	
 	} // end updateCodeVectorsWithProbability() 
 	
@@ -200,4 +165,36 @@ public class CodeMapTrainer {
 		averageDistortion *= 1.0 / sourceVectors.size();
 		return averageDistortion;
 	} // end calculateAverageDistortion()
+	
+	private double calculateAverageDistortionWithProbability() {
+		double averageDistortion = 0;
+		for (int j = 0; j < codeVectors.size(); j++) {
+			for (double sourceVector : sourceVectors) {
+					averageDistortion += transitionMatrix[codeIndexMap.get(sourceVector)][j] * Math.pow(sourceVector - codeVectors.get(j), 2);
+			}
+		}
+		averageDistortion *= 1.0 / sourceVectors.size();
+		return averageDistortion;
+	} // end calculateAverageDistortion()
+	
+	/**
+	 * Determine the index of the encoded source word according to the generalized nearest neighbor condition
+	 * @param sourceWord
+	 * @return Codeword index.
+	 */
+	private int calcBestIndex(double sourceWord) {
+		int bestIndex = 0;
+		double bestDistortion = -1; // inf
+		double currentDistortion;
+		for (int l = 0; l < codeVectors.size(); l++) {
+			currentDistortion = 0;			
+			for (int j = 0; j < codeVectors.size(); j++)
+				currentDistortion += Math.pow(sourceWord - codeVectors.get(j), 2) * transitionMatrix[l][j];
+			if (bestDistortion == -1 || bestDistortion > currentDistortion) {
+				bestDistortion = currentDistortion;
+				bestIndex = l;
+			}
+		}
+		return bestIndex;
+	}
 }

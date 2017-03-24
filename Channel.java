@@ -65,7 +65,6 @@ public class Channel {
 				potentiallyFlippedBit = encodedImage.get(i);
 				history.add((byte) 0);
 			}
-			
 			// update output and history queue
 			channelOutput.add(potentiallyFlippedBit);
 			history.remove();
@@ -88,10 +87,12 @@ public class Channel {
 	
 	/**
 	 * Compute all transition probabilities using the attributes of the channel.
+	 * @param size Size of the codebook (must be a power of 2).
 	 * @return	Matrix containing these transition probabilities.
 	 */
 	public double[][] initializeConditionalProb(int size) {
 		double[][] conditionalProb = new double[size][size];
+		int numBits = (int) (Math.log(size)/Math.log(2));
 		int errorWord;
 		boolean pastError;
 		double probError;
@@ -99,16 +100,16 @@ public class Channel {
 			for (int j = 0; j < size; j++) {		// j = word received
 				errorWord = i ^ j;
 				if ((errorWord & 1) == 0) {
-					probError = 0.5;
+					probError = 1 - BIT_ERROR_RATE;
 					pastError = false;
 				}
 				else {
-					probError = 0.5;
+					probError = BIT_ERROR_RATE;
 					pastError = true;
 				}
-				for (int k = 1; k < size; k++) {
+				for (int k = 1; k < numBits; k++) {
 					if (((errorWord >> k) & 1) == 0) {
-						probError *= pastError ? PROB00 : PROB00;
+						probError *= pastError ? PROB01 : PROB00;
 						pastError = false;
 					}
 					else {
