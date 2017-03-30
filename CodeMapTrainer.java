@@ -153,8 +153,6 @@ public class CodeMapTrainer {
 			}
 			tempCodeVectors.add(numeratorSum / denominatorSum);
 		}
-		if (codeVectors.size() == 4)
-			System.out.println(tempCodeVectors);
 		codeVectors = tempCodeVectors;	
 	} // end updateCodeVectorsWithProbability() 
 	
