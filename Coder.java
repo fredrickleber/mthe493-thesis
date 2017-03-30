@@ -12,6 +12,7 @@ public class Coder implements java.io.Serializable {
 	private static final int BLOCK_SIZE = 8;			// size of DCT blocks (N in thesis)		
 	
 	// the number of bits that each pixel will take up when encoded
+	
 	private static final int[][] fixedBitAllocation = {{8, 7, 6, 4, 1, 0, 0, 0}, 
 													   {7, 6, 5, 1, 0, 0, 0, 0}, 
 													   {6, 5, 2, 0, 0, 0, 0, 0},
@@ -20,12 +21,15 @@ public class Coder implements java.io.Serializable {
 													   {0, 0, 0, 0, 0, 0, 0, 0},
 													   {0, 0, 0, 0, 0, 0, 0, 0},
 													   {0, 0, 0, 0, 0, 0, 0, 0}};
+													   
 	
 	private int coderRate; // encoder/decoder rate. bit allocation is multiplied by this positive integer
 	private double meanCoeffDC = 0;	// sample mean of the DC coefficients produced by the DCT
 	private double meanCoeffAC = 0; // sample mean of the AC coefficients produced by the DCT
 	private double varCoeffDC = 0;	// sample variance of the DC coefficients produced by the DCT
 	private double varCoeffAC = 0;  // sample variance of the AC coefficients produced by the DCT
+	private double[] sourceVals;
+	private double distortion = 0;
 	private Map<Integer, COSQ> cosqs;
 
 
@@ -49,6 +53,7 @@ public class Coder implements java.io.Serializable {
 		List<Byte> encodedData = new ArrayList<Byte>(imageHeight * imageWidth);
 		int rowFactor = imageHeight / BLOCK_SIZE; // number of NxN blocks per row
 		int colFactor = imageWidth / BLOCK_SIZE; // number of NxN blocks per column
+		sourceVals = new double[512 * 512];
 		
 		// apply DCT on NxN grids
 		DoubleDCT_2D dct = new DoubleDCT_2D(BLOCK_SIZE, BLOCK_SIZE);
@@ -58,6 +63,7 @@ public class Coder implements java.io.Serializable {
 				for (int row = 0; row < BLOCK_SIZE; row++) {
 					for (int col = 0; col < BLOCK_SIZE; col++) {
 						imageBlockCoeffs[row * BLOCK_SIZE + col] = grayScalePixelValues[i * BLOCK_SIZE + row][j * BLOCK_SIZE + col];
+						sourceVals[(((i * BLOCK_SIZE) + row) * imageWidth) + (j * BLOCK_SIZE) + col] = grayScalePixelValues[i * BLOCK_SIZE + row][j * BLOCK_SIZE + col];
 					}
 				}
 				dct.forward(imageBlockCoeffs, true); // performs the dct in-place on the given array	
@@ -92,7 +98,7 @@ public class Coder implements java.io.Serializable {
 		int blockArea = BLOCK_SIZE * BLOCK_SIZE;
 		List<Double> decodedBlock;
 		double[] dctBlock = new double[blockArea];
-		double[] dctCoeffs = new double[imageHeight * imageWidth];
+		double[] greyScalePixelValues = new double[imageHeight * imageWidth];
 		DoubleDCT_2D dct = new DoubleDCT_2D(BLOCK_SIZE, BLOCK_SIZE);
 		
 		int rowFactor = imageHeight / BLOCK_SIZE;
@@ -104,22 +110,29 @@ public class Coder implements java.io.Serializable {
 			for (int j = 0; j < colFactor; j++) {
 				// get coefficients for NxN block
 				decodedBlock = decodeCoefficients(encodedData.subList(bitsDecoded, bitsDecoded + blockArea));
-				dctBlock[0] = Math.sqrt(varCoeffDC) * decodedBlock.get(0) + meanCoeffDC; // de-normalize DC coefficient
-				for (int k = 1; k < blockArea; k++)
-					dctBlock[k] =  Math.sqrt(varCoeffAC) * decodedBlock.get(k) + meanCoeffAC; // de-normalize AC coefficients
+				for (int row = 0; row < BLOCK_SIZE; row++) {
+					for (int col = 0; col < BLOCK_SIZE; col++) {
+						if (row == 0 && col == 0)
+							dctBlock[0] = Math.sqrt(varCoeffDC) * decodedBlock.get(0) + meanCoeffDC; // de-normalize DC coefficient
+						else
+							dctBlock[row * BLOCK_SIZE + col] =  Math.sqrt(varCoeffAC) * decodedBlock.get(row * BLOCK_SIZE + col) + meanCoeffAC; // de-normalize AC coefficients
+					}
+				}
 				
 				dct.inverse(dctBlock, true); // performs the inverse dct in-place on the given array
 				
 				// imports the block into the dctCoeffs matrix, converting to row-major form
 				for (int row = 0; row < BLOCK_SIZE; row++) {
 					for (int col = 0; col < BLOCK_SIZE; col++) {
-						dctCoeffs[(((i * BLOCK_SIZE) + row) * imageWidth) + (j * BLOCK_SIZE) + col] = dctBlock[row * BLOCK_SIZE + col];
+						greyScalePixelValues[(((i * BLOCK_SIZE) + row) * imageWidth) + (j * BLOCK_SIZE) + col] = dctBlock[row * BLOCK_SIZE + col];
+						distortion += Math.pow(sourceVals[((i * BLOCK_SIZE) + row) * imageWidth + j * BLOCK_SIZE + col] - greyScalePixelValues[(((i * BLOCK_SIZE) + row) * imageWidth) + (j * BLOCK_SIZE) + col], 2) / (512 * 512);
 					}
 				}
 				bitsDecoded += blockArea;
 			}
 		}
-		return ImageManager.getBufferedImageFromGrayScaleValues(dctCoeffs, imageHeight);
+		System.out.println(20 * Math.log10(255) - 10 * Math.log10(distortion));
+		return ImageManager.getBufferedImageFromGrayScaleValues(greyScalePixelValues, imageHeight);
 	} // end decodeImage()
 	
 	/**

@@ -89,6 +89,7 @@ public class IndexMapTrainer{
 			
 			temp *= COOLING_MULTIPLIER; // cool system
 		}
+
 		// create new codebook
 		List<Double> permutedCodebook = new ArrayList<Double>(SIZE);
 		for (int i = 0; i < SIZE; i++)

@@ -22,7 +22,7 @@ public class CoderFactory {
 	private static final int UNIQUE_DC_PIXEL_QUANTIZER_RATE = 8;
 	// an array of all the unique rates used in the fixed bit allocation array in the Coder class
 	private static final int[] UNIQUE_AC_PIXEL_QUANTIZER_RATES = {1, 2, 4, 5, 6, 7}; // note even though it's final, array values can be changed
-
+	
 
 	/**
 	 * Checks if a Coder is cached and returns it if so
