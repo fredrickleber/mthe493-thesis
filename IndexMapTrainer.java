@@ -96,6 +96,8 @@ public class IndexMapTrainer{
 			permutedCodebook.add((double) 0);
 		for (int i = 0; i < SIZE; i++)
 			permutedCodebook.set(bestState.get(i), codebook.get(i));
+		if (SIZE == 4)
+			System.out.println(permutedCodebook);
 		return permutedCodebook;
 	}
 	

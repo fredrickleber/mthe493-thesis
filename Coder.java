@@ -131,7 +131,7 @@ public class Coder implements java.io.Serializable {
 				bitsDecoded += blockArea;
 			}
 		}
-		System.out.println("PSNR = " + (20 * Math.log10(255) - 10 * Math.log10(distortion)) + "dB");
+		System.out.println(20 * Math.log10(255) - 10 * Math.log10(distortion));
 		return ImageManager.getBufferedImageFromGrayScaleValues(greyScalePixelValues, imageHeight);
 	} // end decodeImage()
 	
